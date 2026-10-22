@@ -3,6 +3,7 @@ import html
 import json
 import re
 import shlex
+import shutil
 import sqlite3
 import urllib.request
 from pathlib import Path
@@ -69,6 +70,22 @@ TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.append(BILLING_SCHEMA)
+TOOL_SCHEMAS += [
+    {
+        "name": "delete_file",
+        "description": "Delete a workspace file.",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+    },
+    {
+        "name": "make_payment",
+        "description": "Pay a vendor (stub: recorded in a ledger). amount is a decimal string.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"to": {"type": "string"}, "amount": {"type": "string"}, "memo": {"type": "string"}},
+            "required": ["to", "amount", "memo"],
+        },
+    },
+]
 
 SCHEMA_BY_NAME = {s["name"]: s["input_schema"] for s in TOOL_SCHEMAS}
 CUSTOMER_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]{0,49}$")
@@ -92,6 +109,7 @@ class Tools:
         self.quarantine_model = quarantine_model
         self.tainted = False  # True once untrusted content (fetched pages) has entered the model's context
         self.shell_log: list[str] = []
+        self.ledger: list[dict] = []  # payments made by make_payment (stub)
         self.broker = Broker(cfg.secrets)  # S6: credentials live here, never in model context (when hardened)
         self.executed: list[list[str]] = []  # argv lists that file_stats caused to run (simulated, never real)
         self._conn: sqlite3.Connection | None = None
@@ -175,6 +193,12 @@ class Tools:
             violation = self._policy_violation(name, args)
             if violation:
                 return f"blocked by policy: {violation}"
+        # FIX (S7, hardening["approval_gate"]): risky actions need a human's approval of the exact arguments.
+        gate = self.cfg.hardening.get("approval_gate")
+        if gate is not None:
+            held = gate.check(name, args)
+            if held:
+                return held
         try:
             out = fn(**args)
             # FIX (S6, hardening["redact_tool_results"]): secrets never enter the model's context via tool output.
@@ -186,10 +210,34 @@ class Tools:
         except Exception as e:  # noqa: BLE001 - tool errors go back to the model
             return f"error: {type(e).__name__}: {e}"
 
-    # VULNERABLE (S2): an absolute path or '..' escapes the workspace.
     def _call_api(self, endpoint: str, api_key: str | None = None) -> str:
         return call_api(self, endpoint, api_key)
 
+    # VULNERABLE (S7): irreversible, immediate, no confirmation. Inherits the S2 path flaw unless confined.
+    def _delete_file(self, path: str) -> str:
+        p = self._resolve(path)
+        if self.cfg.hardening.get("soft_delete"):
+            # FIX (S7): recoverable. Moves to workspace/.trash instead of unlinking.
+            trash = self.cfg.workspace / ".trash"
+            trash.mkdir(exist_ok=True)
+            dest = trash / f"{p.name}.{len(list(trash.iterdir()))}"
+            shutil.move(str(p), str(dest))
+            return f"moved {path} to .trash/{dest.name}"
+        p.unlink()
+        return f"deleted {path}"
+
+    # VULNERABLE (S7): any payee, any amount, immediately. Stub: appends to a ledger, moves no money.
+    def _make_payment(self, to: str, amount: str, memo: str) -> str:
+        allow = self.cfg.hardening.get("payee_allowlist")
+        if allow is not None and to not in allow:
+            raise PermissionError(f"payee {to!r} is not on the approved vendor list")
+        limit = self.cfg.hardening.get("payment_limit")
+        if limit is not None and float(amount) > limit:
+            raise PermissionError(f"amount {amount} exceeds the per-payment limit of {limit}")
+        self.ledger.append({"to": to, "amount": amount, "memo": memo})
+        return f"paid {amount} to {to}"
+
+    # VULNERABLE (S2): an absolute path or '..' escapes the workspace.
     def _read_file(self, path: str) -> str:
         # FIX (S6, hardening["secret_file_denylist"]): credential files are not readable by the model at all.
         deny = self.cfg.hardening.get("secret_file_denylist")
