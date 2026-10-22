@@ -16,6 +16,29 @@ jobs:
           python-version: "3.12"
       - run: pip install pre-commit==4.0.1
       - run: pre-commit run --all-files
+  # Security checks. The lab code is vulnerable ON PURPOSE, so SAST only gates on high severity;
+  # the full report is printed for review. Planted flaws (e.g. B310 urlopen) are expected findings.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.0"
+      - name: Dependency vulnerabilities (pip-audit)
+        run: |
+          uv export --frozen --no-hashes --no-emit-project -o requirements.audit.txt
+          uvx pip-audit==2.9.0 -r requirements.audit.txt --no-deps --disable-pip
+      - name: SAST report (bandit, informational)
+        run: uvx bandit==1.8.6 -r agent services -ll || true
+      - name: SAST gate (bandit, high severity only)
+        run: uvx bandit==1.8.6 -r agent services --severity-level high
+      - name: Dockerfile lint (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+
   tests:
     runs-on: ubuntu-latest
     steps:
