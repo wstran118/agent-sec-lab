@@ -11,9 +11,9 @@ SYSTEM_PROMPT = (
 )
 
 
-def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None) -> dict:
+def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None) -> dict:
     cfg = cfg or Config()
-    tools = tools or Tools(cfg)
+    tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model)
     messages = [{"role": "user", "content": task}]
     log = []
     final = ""
