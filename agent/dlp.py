@@ -5,7 +5,7 @@ encoded around them (see the xfail test in tests/test_s3_exfiltration.py). Use i
 """
 import base64
 import re
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 PATTERNS = [
     re.compile(r"CANARY-[A-Z0-9-]+"),  # lab canaries
@@ -34,6 +34,17 @@ def find_secrets(text: str) -> list[str]:
         for p in PATTERNS:
             found += p.findall(view)
     return found
+
+
+def scrub(text: str, known_values=()) -> str:
+    """Redact exact known secret values (also their URL-encoded and base64 forms) and secret-looking patterns."""
+    text = str(text)
+    for v in known_values:
+        if not v:
+            continue
+        for form in {v, quote(v), base64.b64encode(v.encode()).decode(), base64.urlsafe_b64encode(v.encode()).decode()}:
+            text = text.replace(form, "[REDACTED]")
+    return redact(text)
 
 
 def redact(text: str) -> str:

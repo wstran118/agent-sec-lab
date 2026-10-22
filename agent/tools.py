@@ -8,8 +8,10 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .billing import BILLING_SCHEMA, call_api
+from .broker import Broker
 from .config import Config
-from .dlp import find_secrets
+from .dlp import find_secrets, scrub
 from .shellsim import simulate
 
 TOOL_SCHEMAS = [
@@ -66,12 +68,12 @@ TOOL_SCHEMAS = [
         },
     },
 ]
+TOOL_SCHEMAS.append(BILLING_SCHEMA)
 
 SCHEMA_BY_NAME = {s["name"]: s["input_schema"] for s in TOOL_SCHEMAS}
 CUSTOMER_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z .'-]{0,49}$")
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]{0,127}$")
 CSP = "default-src 'none'; style-src 'unsafe-inline'"
-
 
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 QUARANTINE_SYSTEM = (
@@ -90,6 +92,7 @@ class Tools:
         self.quarantine_model = quarantine_model
         self.tainted = False  # True once untrusted content (fetched pages) has entered the model's context
         self.shell_log: list[str] = []
+        self.broker = Broker(cfg.secrets)  # S6: credentials live here, never in model context (when hardened)
         self.executed: list[list[str]] = []  # argv lists that file_stats caused to run (simulated, never real)
         self._conn: sqlite3.Connection | None = None
 
@@ -173,14 +176,25 @@ class Tools:
             if violation:
                 return f"blocked by policy: {violation}"
         try:
-            return fn(**args)
+            out = fn(**args)
+            # FIX (S6, hardening["redact_tool_results"]): secrets never enter the model's context via tool output.
+            if self.cfg.hardening.get("redact_tool_results"):
+                out = scrub(out, self.broker.values())
+            return out
         except PermissionError as e:
             return f"blocked by policy: {e}"
         except Exception as e:  # noqa: BLE001 - tool errors go back to the model
             return f"error: {type(e).__name__}: {e}"
 
     # VULNERABLE (S2): an absolute path or '..' escapes the workspace.
+    def _call_api(self, endpoint: str, api_key: str | None = None) -> str:
+        return call_api(self, endpoint, api_key)
+
     def _read_file(self, path: str) -> str:
+        # FIX (S6, hardening["secret_file_denylist"]): credential files are not readable by the model at all.
+        deny = self.cfg.hardening.get("secret_file_denylist")
+        if deny and (Path(path).name in deny or Path(path).suffix in deny):
+            raise PermissionError(f"{Path(path).name!r} holds credentials and cannot be read by the agent")
         return self._resolve(path).read_text()
 
     def _write_file(self, path: str, content: str) -> str:

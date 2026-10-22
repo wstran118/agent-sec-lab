@@ -13,6 +13,8 @@ class Config:
     outbox: Path = field(default_factory=lambda: Path(os.environ.get("AGENT_OUTBOX", ROOT / "transcripts" / "outbox.jsonl")))
     transcript_dir: Path = field(default_factory=lambda: Path(os.environ.get("AGENT_TRANSCRIPTS", ROOT / "transcripts")))
     sink_url: str = field(default_factory=lambda: os.environ.get("SINK_URL", "http://attacker-sink:9000"))
+    # Fake credentials the tools use. The key is a canary: it unlocks nothing outside the lab's fake billing service.
+    secrets: dict = field(default_factory=lambda: {"BILLING_API_KEY": os.environ.get("BILLING_API_KEY", "CANARY-BILLING-KEY-0001")})
     max_turns: int = 10
     max_tokens: int = 1024
     # Hardening toggles: empty means VULNERABLE. Fixes land in later milestones.

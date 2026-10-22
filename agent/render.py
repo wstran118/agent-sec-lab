@@ -5,7 +5,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 from .config import Config
-from .dlp import redact
+from .dlp import redact, scrub
 
 IMG_INLINE = re.compile(r'!\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)')
 IMG_REF = re.compile(r"!\[[^\]]*\]\[([^\]]*)\]")
@@ -55,6 +55,8 @@ def sanitize_markdown(text: str, allowed_netlocs=()) -> str:
 
 def render_output(text: str, cfg: Config) -> tuple[str, list[str]]:
     """(text shown to the user, URLs the client auto-fetched)."""
+    if cfg.hardening.get("redact_output"):  # FIX (S6): secrets never reach the user, even if the model repeats one
+        text = scrub(text, cfg.secrets.values())
     if cfg.hardening.get("sanitize_output"):
         text = sanitize_markdown(text, cfg.hardening.get("link_allowlist", ()))
     return text, client_render(text)
