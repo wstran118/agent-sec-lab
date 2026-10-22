@@ -34,7 +34,7 @@ jobs:
       - name: SAST gate (bandit, high severity only)
         run: uvx bandit==1.8.6 -r agent services --severity-level high
       - name: Dockerfile lint (hadolint)
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: Dockerfile
           failure-threshold: error
