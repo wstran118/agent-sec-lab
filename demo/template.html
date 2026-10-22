@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Security Lab Replay</title>
+<meta name="description" content="Replay of an intentionally vulnerable AI agent: each attack run against the vulnerable and the hardened agent.">
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #1c2230; --muted: #5a6478; --line: #d9dde5;
+  --bad: #b3261e; --bad-bg: #fdecea; --good: #1b6e3c; --good-bg: #e6f4ea; --warn: #8a5a00; --warn-bg: #fff4d6;
+  --accent: #2b5fd9; --code-bg: #eef1f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151c; --surface: #1a1f2a; --ink: #e8ebf2; --muted: #9aa4b8; --line: #2e3646;
+    --bad: #ff8a80; --bad-bg: #3a1f1d; --good: #7fd9a0; --good-bg: #17301f; --warn: #ffd37a; --warn-bg: #3a2f12;
+    --accent: #8ab0ff; --code-bg: #232a38;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151c; --surface: #1a1f2a; --ink: #e8ebf2; --muted: #9aa4b8; --line: #2e3646;
+  --bad: #ff8a80; --bad-bg: #3a1f1d; --good: #7fd9a0; --good-bg: #17301f; --warn: #ffd37a; --warn-bg: #3a2f12;
+  --accent: #8ab0ff; --code-bg: #232a38;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.banner { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); border-radius: 8px; padding: 10px 14px; margin: 0 0 20px; font-size: .92rem; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 16px; }
+.tabs button { flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: .9rem; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tabs button:focus-visible, .replay:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.head h2 { margin: 0 0 6px; font-size: 1.35rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.tag { background: var(--code-bg); border-radius: 6px; padding: 2px 8px; font-size: .8rem; color: var(--muted); }
+dl.about { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; }
+dl.about dt { font-weight: 600; color: var(--muted); }
+dl.about dd { margin: 0; }
+.bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.replay { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 8px; padding: 6px 14px; font: inherit; cursor: pointer; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } dl.about { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 0; }
+.card header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); gap: 8px; }
+.card header h3 { margin: 0; font-size: 1rem; }
+.badge { font-weight: 700; font-size: .8rem; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.badge.bad { color: var(--bad); background: var(--bad-bg); }
+.badge.good { color: var(--good); background: var(--good-bg); }
+.tl { list-style: none; margin: 0; padding: 10px 14px; display: grid; gap: 8px; }
+.tl li { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; min-width: 0; }
+.tl li[hidden] { display: none; }
+.tl .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tl .txt { overflow-wrap: anywhere; white-space: pre-wrap; }
+.tl li.user { border-color: var(--accent); }
+.tl li.assistant { border-color: var(--muted); }
+.tl li.session { border: 0; padding: 6px 0 0; font-weight: 600; color: var(--muted); }
+.tl li.tool.ran { border-color: var(--warn); }
+.tl li.tool.blocked, .tl li.tool.pending { border-color: var(--good); }
+code, .code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .82rem; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+.out { display: block; margin-top: 3px; padding: 6px 8px; white-space: pre-wrap; }
+.state { font-size: .72rem; font-weight: 700; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+.state.blocked, .state.pending { color: var(--good); background: var(--good-bg); }
+.state.ran { color: var(--warn); background: var(--warn-bg); }
+.ev { list-style: none; margin: 0; padding: 12px 14px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.ev li { padding: 6px 10px; border-radius: 6px; overflow-wrap: anywhere; }
+.ev li.bad { background: var(--bad-bg); color: var(--bad); }
+.ev li.good { background: var(--good-bg); color: var(--good); }
+.ev li[hidden] { display: none; }
+footer { margin-top: 28px; color: var(--muted); font-size: .88rem; }
+a { color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .tl li { transition: opacity .25s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent Security Lab Replay</h1>
+  <p class="sub">An intentionally vulnerable, tool-using AI agent: each attack, run against the vulnerable agent and the hardened one.</p>
+  <p class="banner" role="note"><strong>Replay, not a live model.</strong> Every run below was executed against the real lab code with a deterministic stand-in model that obeys whatever untrusted content says (the worst case), on fake data with canary secrets. It shows what the <em>controls</em> do, not how likely a real model is to fall for an attack. <strong>Never deploy the lab code.</strong></p>
+  <div class="tabs" id="tabs" role="tablist" aria-label="Scenarios"></div>
+  <section id="view" aria-live="polite"></section>
+  <footer>
+    Source, tests and write-ups: <a href="https://github.com/wstran118/agent-sec-lab">github.com/wstran118/agent-sec-lab</a>.
+    This page is generated by <code>uv run python -m demo.build</code>, and the test suite fails if any verdict here changes.
+  </footer>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+const REPO = "https://github.com/wstran118/agent-sec-lab/blob/main/docs/writeups/";
+const tabs = document.getElementById("tabs");
+const view = document.getElementById("view");
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;   // all data goes through textContent: payloads contain <script> etc.
+  return n;
+}
+
+function timeline(events) {
+  const ol = el("ol", "tl");
+  ol.setAttribute("aria-label", "Run timeline");
+  for (const e of events) {
+    const li = el("li", e.kind + (e.kind === "tool" ? " " + e.state : ""));
+    if (e.kind === "session") {
+      li.textContent = e.text;
+    } else if (e.kind === "tool") {
+      li.append(el("div", "lbl", "Agent calls a tool"));
+      const head = el("div");
+      head.append(el("code", "", e.name + "(" + e.input + ")"));
+      if (e.state !== "ran") head.append(el("span", "state " + e.state, e.state === "blocked" ? "BLOCKED" : "HELD FOR HUMAN"));
+      else head.append(el("span", "state ran", "RAN"));
+      li.append(head, el("code", "out", e.output));
+    } else {
+      li.append(el("div", "lbl", e.kind === "user" ? "User task" : "Answer shown to the user"), el("div", "txt", e.text));
+    }
+    ol.append(li);
+  }
+  return ol;
+}
+
+function card(label, v) {
+  const c = el("article", "card");
+  const h = el("header");
+  h.append(el("h3", "", label));
+  const bad = v.verdict === "EXPLOITED";
+  h.append(el("span", "badge " + (bad ? "bad" : "good"), (bad ? "✕ " : "✓ ") + v.verdict));
+  const ev = el("ul", "ev");
+  ev.setAttribute("aria-label", "What happened");
+  for (const x of v.evidence) ev.append(el("li", x.bad ? "bad" : "good", (x.bad ? "✕ " : "✓ ") + x.text));
+  c.append(h, timeline(v.events), ev);
+  return c;
+}
+
+function show(id) {
+  const s = DATA.scenarios.find(x => x.id === id) || DATA.scenarios[0];
+  for (const b of tabs.children) b.setAttribute("aria-selected", String(b.dataset.id === s.id));
+  history.replaceState(null, "", "#" + s.id);
+  view.replaceChildren();
+  const head = el("div", "head");
+  head.append(el("h2", "", s.title));
+  const tags = el("div", "tags");
+  for (const t of [s.owasp, s.atlas]) tags.append(el("span", "tag", t));
+  head.append(tags);
+  const dl = el("dl", "about");
+  for (const [k, v] of [["Flaw", s.flaw], ["Attack", s.attack], ["Fix", s.fix]]) { dl.append(el("dt", "", k), el("dd", "", v)); }
+  head.append(dl);
+  const bar = el("div", "bar");
+  const btn = el("button", "replay", "▶ Replay step by step");
+  const link = el("a", "", "Read the write-up");
+  link.href = REPO + s.writeup + ".md";
+  bar.append(btn, link);
+  const cols = el("div", "cols");
+  cols.append(card("Vulnerable agent", s.vulnerable), card("Hardened agent", s.fixed));
+  view.append(head, bar, cols);
+  btn.addEventListener("click", () => replay(cols));
+}
+
+function replay(cols) {
+  const items = [...cols.querySelectorAll(".tl li, .ev li")];
+  const instant = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  items.forEach(i => { i.hidden = !instant; });
+  if (instant) return;
+  // reveal both columns in lockstep: timeline steps first, then the evidence
+  const lists = [...cols.querySelectorAll(".card")].map(c => [...c.querySelectorAll(".tl li"), ...c.querySelectorAll(".ev li")]);
+  const longest = Math.max(...lists.map(l => l.length));
+  let i = 0;
+  const tick = () => {
+    lists.forEach(l => { if (l[i]) l[i].hidden = false; });
+    if (++i < longest) setTimeout(tick, 700);
+  };
+  tick();
+}
+
+for (const s of DATA.scenarios) {
+  const b = el("button", "", s.id.toUpperCase() + " " + s.title);
+  b.setAttribute("role", "tab");
+  b.dataset.id = s.id;
+  b.addEventListener("click", () => show(s.id));
+  tabs.append(b);
+}
+show(location.hash.slice(1));
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+</script>
+</body>
+</html>
