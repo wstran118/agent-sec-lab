@@ -35,5 +35,6 @@ def cfg(tmp_path, sink):
         workspace=ws,
         outbox=tmp_path / "outbox.jsonl",
         transcript_dir=tmp_path / "transcripts",
+        memory_path=tmp_path / "memory.json",
         sink_url=f"http://127.0.0.1:{sink.server_address[1]}",
     )

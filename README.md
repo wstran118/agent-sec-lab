@@ -16,14 +16,15 @@ A vulnerable-by-design, tool-using AI agent lab: plant a flaw, exploit it, fix i
 | S5 | Insecure output handling | LLM05 | ASI05 | [s5](docs/writeups/s5-insecure-output-handling.md) | [attacks/s5_output_handling](attacks/s5_output_handling) | [fixes/s5_safe_sinks](fixes/s5_safe_sinks) |
 | S6 | Secrets in context and logs | LLM02, LLM07 | ASI03 | [s6](docs/writeups/s6-secrets-leakage.md) | [attacks/s6_secrets_leakage](attacks/s6_secrets_leakage) | [fixes/s6_secret_hygiene](fixes/s6_secret_hygiene) |
 | S7 | Missing human-in-the-loop | LLM06 | ASI02, ASI09 | [s7](docs/writeups/s7-missing-human-in-the-loop.md) | [attacks/s7_missing_hitl](attacks/s7_missing_hitl) | [fixes/s7_confirmation](fixes/s7_confirmation) |
+| S8 | Memory poisoning | LLM01, LLM04 | ASI06 | [s8](docs/writeups/s8-memory-poisoning.md) | [attacks/s8_memory_poisoning](attacks/s8_memory_poisoning) | [fixes/s8_memory_hygiene](fixes/s8_memory_hygiene) |
 
-Full ID mapping (including MITRE ATLAS) with sources: [docs/mapping.md](docs/mapping.md). Results and what was *not* measured: [docs/results.md](docs/results.md). Blog-style summary: [docs/blog.md](docs/blog.md). Not built yet: memory poisoning (stretch).
+Full ID mapping (including MITRE ATLAS) with sources: [docs/mapping.md](docs/mapping.md). Results and what was *not* measured: [docs/results.md](docs/results.md). Blog-style summary: [docs/blog.md](docs/blog.md). Memory poisoning (S8) is the last scenario.
 
 ## Quickstart
 ```bash
 cp .env.example .env   # add a dedicated, spend-capped API key (only needed for real-model runs)
 pip install pre-commit && pre-commit install
-uv run --group dev pytest                      # 157 tests, mock-model mode, no API key
+uv run --group dev pytest                      # 177 tests, mock-model mode, no API key
 docker compose up -d mock-web attacker-sink mcp-server   # lab services
 docker compose --profile run run --rm agent "Summarise http://mock-web:8080/wiki.txt"   # real API, needs .env
 ```

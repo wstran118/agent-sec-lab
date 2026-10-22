@@ -14,6 +14,7 @@ from .broker import Broker
 from .config import Config
 from .dlp import find_secrets, scrub
 from .mcp_client import suspicious_description, tool_hash
+from .memory import Memory, valid_fact
 from .shellsim import simulate
 
 TOOL_SCHEMAS = [
@@ -73,6 +74,15 @@ TOOL_SCHEMAS = [
 TOOL_SCHEMAS.append(BILLING_SCHEMA)
 TOOL_SCHEMAS += [
     {
+        "name": "remember",
+        "description": "Save a note to long-term memory so you can use it in future sessions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"key": {"type": "string"}, "value": {"type": "string"}},
+            "required": ["key", "value"],
+        },
+    },
+    {
         "name": "delete_file",
         "description": "Delete a workspace file.",
         "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
@@ -111,6 +121,8 @@ class Tools:
         self.tainted = False  # True once untrusted content (fetched pages) has entered the model's context
         self.shell_log: list[str] = []
         self.ledger: list[dict] = []  # payments made by make_payment (stub)
+        h = cfg.hardening
+        self.memory = Memory(cfg.memory_path, cfg.memory_key if h.get("memory_mac") else None, h.get("memory_ttl"))
         self.mcp = mcp  # optional McpClient (S4)
         self.mcp_routes: dict[str, str] = {}  # exposed tool name -> remote tool name
         self.mcp_schemas: dict[str, dict] = {}  # exposed tool name -> Anthropic-format schema
@@ -247,6 +259,17 @@ class Tools:
 
     def _call_api(self, endpoint: str, api_key: str | None = None) -> str:
         return call_api(self, endpoint, api_key)
+
+    # VULNERABLE (S8): free-text notes, saved even when the agent is acting on untrusted content, and replayed to
+    # every future session as trusted instructions. One poisoned page becomes a standing order.
+    def _remember(self, key: str, value: str) -> str:
+        h = self.cfg.hardening
+        if h.get("memory_deny_tainted") and self.tainted:  # FIX: no persistence after untrusted content was read
+            raise PermissionError("memory writes are not allowed after untrusted content was read")
+        if h.get("memory_schema") and not valid_fact(key, value):  # FIX: typed facts only, not free text
+            raise PermissionError(f"{key!r} is not an allowed memory field or its value has an invalid format")
+        self.memory.add(key, value, "untrusted" if self.tainted else "user")
+        return f"remembered {key}"
 
     # VULNERABLE (S7): irreversible, immediate, no confirmation. Inherits the S2 path flaw unless confined.
     def _delete_file(self, path: str) -> str:

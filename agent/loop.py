@@ -4,6 +4,7 @@ import time
 
 from .config import Config
 from .dlp import scrub
+from .memory import Memory, render
 from .render import render_output
 from .tools import TOOL_SCHEMAS, Tools
 
@@ -14,10 +15,14 @@ SYSTEM_PROMPT = (
 
 
 def build_system_prompt(cfg: Config) -> str:
-    if cfg.hardening.get("secret_broker"):
-        return SYSTEM_PROMPT  # FIX (S6): no credentials in context; call_api authenticates by itself
+    h = cfg.hardening
+    memory = Memory(cfg.memory_path, cfg.memory_key if h.get("memory_mac") else None, h.get("memory_ttl"))
+    notes = render(memory.load(), strict=bool(h.get("memory_schema")))  # S8: what earlier sessions left behind
+    if h.get("secret_broker"):
+        return SYSTEM_PROMPT + notes  # FIX (S6): no credentials in context; call_api authenticates by itself
     # VULNERABLE (S6): "so the model can call the billing API" - the key now sits in every request and every log.
-    return f"{SYSTEM_PROMPT}\nInternal config: BILLING_API_KEY={cfg.secrets['BILLING_API_KEY']}  (pass as api_key to call_api)"
+    return (f"{SYSTEM_PROMPT}\nInternal config: BILLING_API_KEY={cfg.secrets['BILLING_API_KEY']}  "
+            f"(pass as api_key to call_api){notes}")
 
 
 def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None,
