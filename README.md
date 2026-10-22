@@ -5,6 +5,8 @@
 
 A vulnerable-by-design, tool-using AI agent lab: plant a flaw, exploit it, fix it, and prove both with an automated test. Fake data only (secrets are `CANARY-*` strings). Everything is designed to run inside Docker; the test suite runs locally with no API key.
 
+**See it without running anything:** open [docs/demo/index.html](docs/demo/index.html) in a browser. It replays every scenario, vulnerable agent versus hardened agent, side by side. It is a recording of real runs of the lab code with a scripted worst-case model, not a live model. To publish it, enable GitHub Pages for the `docs/` folder; regenerate it with `uv run python -m demo.build`.
+
 ## Scenarios
 
 | # | Scenario | OWASP LLM 2025 | OWASP Agentic 2026 | Write-up | Exploit | Fix |
