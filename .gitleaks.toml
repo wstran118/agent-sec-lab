@@ -1,0 +1,9 @@
+title = "agent-sec-lab"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake canary secrets used by the lab"
+regexes = ['''CANARY-[A-Z0-9-]+''']
+paths = ['''\.env\.example$''']

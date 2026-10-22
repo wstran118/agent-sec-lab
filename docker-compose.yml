@@ -1,0 +1,6 @@
+# Lab network: internal-only, so containers have no internet egress.
+# Services (agent, mock-web, attacker-sink) are added in M2.
+name: agent-sec-lab
+networks:
+  lab:
+    internal: true
