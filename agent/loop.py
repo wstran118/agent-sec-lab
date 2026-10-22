@@ -12,14 +12,17 @@ SYSTEM_PROMPT = (
 )
 
 
-def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None) -> dict:
+def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None,
+              allowed_tools=None) -> dict:
+    """allowed_tools: optional per-task tool grant (names). Schemas for other tools are not even shown to the model."""
     cfg = cfg or Config()
-    tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model)
+    tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model, allowed_tools=allowed_tools)
+    schemas = [s for s in TOOL_SCHEMAS if allowed_tools is None or s["name"] in allowed_tools]
     messages = [{"role": "user", "content": task}]
     log = []
     final = ""
     for _ in range(cfg.max_turns):
-        reply = model.step(SYSTEM_PROMPT, messages, TOOL_SCHEMAS)
+        reply = model.step(SYSTEM_PROMPT, messages, schemas)
         messages.append({"role": "assistant", "content": reply.content})
         final = "".join(b["text"] for b in reply.content if b["type"] == "text") or final
         if reply.stop_reason != "tool_use":
