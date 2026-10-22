@@ -3,6 +3,7 @@ import json
 import time
 
 from .config import Config
+from .render import render_output
 from .tools import TOOL_SCHEMAS, Tools
 
 SYSTEM_PROMPT = (
@@ -31,7 +32,9 @@ def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None =
             log.append({"tool": b["name"], "input": b["input"], "output": out})
             results.append({"type": "tool_result", "tool_use_id": b["id"], "content": out})
         messages.append({"role": "user", "content": results})
-    transcript = {"task": task, "final": final, "tool_calls": log, "messages": messages}
+    display, client_fetches = render_output(final, cfg)  # what the user sees, and what their client auto-loads
+    transcript = {"task": task, "final": final, "display": display, "client_fetches": client_fetches,
+                  "tool_calls": log, "messages": messages}
     _save(cfg, transcript)
     return transcript
 

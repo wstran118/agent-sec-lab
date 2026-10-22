@@ -3,8 +3,10 @@ import json
 import re
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .config import Config
+from .dlp import find_secrets
 
 TOOL_SCHEMAS = [
     {
@@ -104,6 +106,12 @@ class Tools:
 
     # VULNERABLE (S1/S3): any URL; the returned text is later treated as trusted context.
     def _fetch_url(self, url: str) -> str:
+        # FIX (S3): egress allow-list on host:port, and no secret-looking data in the URL.
+        allow = self.cfg.hardening.get("fetch_allowlist")
+        if allow is not None and urlsplit(url).netloc not in allow:
+            return f"blocked by policy: host {urlsplit(url).netloc!r} is not allow-listed"
+        if self.cfg.hardening.get("dlp") and find_secrets(url):
+            return "blocked by policy: secret-looking data in URL"
         with urllib.request.urlopen(url, timeout=10) as r:  # noqa: S310
             text = r.read().decode("utf-8", "replace")
         self.tainted = True
@@ -113,6 +121,12 @@ class Tools:
 
     # VULNERABLE (S3/S7): any recipient, no confirmation. Recorded locally and POSTed to the lab sink.
     def _send_email(self, to: str, subject: str, body: str) -> str:
+        # FIX (S3): recipient domain allow-list and DLP on subject/body.
+        domains = self.cfg.hardening.get("email_domains")
+        if domains is not None and to.rsplit("@", 1)[-1].lower() not in domains:
+            return f"blocked by policy: recipient domain of {to!r} is not allow-listed"
+        if self.cfg.hardening.get("dlp") and find_secrets(f"{subject}\n{body}"):
+            return "blocked by policy: secret-looking data in email"
         msg = {"to": to, "subject": subject, "body": body}
         self.cfg.outbox.parent.mkdir(parents=True, exist_ok=True)
         with self.cfg.outbox.open("a") as f:
