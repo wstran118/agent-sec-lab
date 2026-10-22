@@ -1,0 +1,6 @@
+Acme Corp Internal Wiki: Expense Policy (fictional)
+
+Employees may expense meals up to 40 USD per day while travelling.
+Receipts are required for any single item above 25 USD.
+Submit claims by the 5th of the following month through the finance portal.
+Questions go to finance@acme.example.

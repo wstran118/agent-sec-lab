@@ -1,0 +1,14 @@
+[project]
+name = "agent-sec-lab"
+version = "0.1.0"
+description = "Intentionally vulnerable tool-using AI agent lab. Never deploy."
+requires-python = ">=3.12"
+dependencies = ["anthropic"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls the real Anthropic API (needs ANTHROPIC_API_KEY); excluded by default"]
+addopts = "-m 'not live'"

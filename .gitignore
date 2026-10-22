@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+# fake canary credentials used by the lab (no real secrets)
+!data/workspace/.env
 *.key
 *.pem
 

@@ -5,7 +5,14 @@
 
 A vulnerable-by-design, tool-using AI agent lab: plant a flaw, exploit it, fix it, test both. Fake data only. Everything runs inside Docker.
 
-Status: early scaffolding (M1).
+Status: baseline agent (M2). No vulnerabilities are exploited yet; the tools are deliberately unrestricted.
+
+## Quickstart
+```bash
+uv run --group dev pytest                      # mock-model tests, no API key needed
+docker compose up -d mock-web attacker-sink    # lab services
+docker compose --profile run run --rm agent "Summarise http://mock-web:8080/wiki.txt"   # real API, needs .env
+```
 
 ## Setup
 ```bash
