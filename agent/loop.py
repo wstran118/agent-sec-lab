@@ -3,6 +3,7 @@ import json
 import time
 
 from .config import Config
+from .dlp import scrub
 from .render import render_output
 from .tools import TOOL_SCHEMAS, Tools
 
@@ -12,17 +13,25 @@ SYSTEM_PROMPT = (
 )
 
 
+def build_system_prompt(cfg: Config) -> str:
+    if cfg.hardening.get("secret_broker"):
+        return SYSTEM_PROMPT  # FIX (S6): no credentials in context; call_api authenticates by itself
+    # VULNERABLE (S6): "so the model can call the billing API" - the key now sits in every request and every log.
+    return f"{SYSTEM_PROMPT}\nInternal config: BILLING_API_KEY={cfg.secrets['BILLING_API_KEY']}  (pass as api_key to call_api)"
+
+
 def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None,
               allowed_tools=None) -> dict:
     """allowed_tools: optional per-task tool grant (names). Schemas for other tools are not even shown to the model."""
     cfg = cfg or Config()
     tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model, allowed_tools=allowed_tools)
     schemas = [s for s in TOOL_SCHEMAS if allowed_tools is None or s["name"] in allowed_tools]
+    system = build_system_prompt(cfg)
     messages = [{"role": "user", "content": task}]
     log = []
     final = ""
     for _ in range(cfg.max_turns):
-        reply = model.step(SYSTEM_PROMPT, messages, schemas)
+        reply = model.step(system, messages, schemas)
         messages.append({"role": "assistant", "content": reply.content})
         final = "".join(b["text"] for b in reply.content if b["type"] == "text") or final
         if reply.stop_reason != "tool_use":
@@ -36,13 +45,16 @@ def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None =
             results.append({"type": "tool_result", "tool_use_id": b["id"], "content": out})
         messages.append({"role": "user", "content": results})
     display, client_fetches = render_output(final, cfg)  # what the user sees, and what their client auto-loads
-    transcript = {"task": task, "final": final, "display": display, "client_fetches": client_fetches,
-                  "tool_calls": log, "messages": messages}
-    _save(cfg, transcript)
+    transcript = {"task": task, "system": system, "final": final, "display": display,
+                  "client_fetches": client_fetches, "tool_calls": log, "messages": messages}
+    _save(cfg, transcript, tools)
     return transcript
 
 
-def _save(cfg: Config, transcript: dict) -> None:
+def _save(cfg: Config, transcript: dict, tools: Tools) -> None:
+    line = json.dumps({"ts": time.time(), **transcript}, default=str)
+    if cfg.hardening.get("redact_logs"):
+        line = scrub(line, tools.broker.values())  # FIX (S6): the log never holds a secret, whatever the model did
     cfg.transcript_dir.mkdir(parents=True, exist_ok=True)
     with (cfg.transcript_dir / "runs.jsonl").open("a") as f:
-        f.write(json.dumps({"ts": time.time(), **transcript}, default=str) + "\n")
+        f.write(line + "\n")
