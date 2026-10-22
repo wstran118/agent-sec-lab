@@ -19,6 +19,10 @@ services:
     <<: *lab
     command: ["python", "-m", "services.sink.app", "9000"]
     networks: [lab]
+  mcp-server:
+    <<: *lab
+    command: ["python", "-m", "services.mcp_server.app", "7000"]
+    networks: [lab]
   agent:
     <<: *lab
     profiles: ["run"]            # docker compose --profile run run --rm agent "task"

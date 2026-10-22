@@ -21,11 +21,16 @@ def build_system_prompt(cfg: Config) -> str:
 
 
 def run_agent(task: str, model, cfg: Config | None = None, tools: Tools | None = None, quarantine_model=None,
-              allowed_tools=None) -> dict:
+              allowed_tools=None, mcp=None) -> dict:
     """allowed_tools: optional per-task tool grant (names). Schemas for other tools are not even shown to the model."""
     cfg = cfg or Config()
-    tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model, allowed_tools=allowed_tools)
-    schemas = [s for s in TOOL_SCHEMAS if allowed_tools is None or s["name"] in allowed_tools]
+    tools = tools or Tools(cfg, task=task, quarantine_model=quarantine_model, allowed_tools=allowed_tools,
+                          mcp=mcp)
+    by_name = {s["name"]: s for s in TOOL_SCHEMAS if allowed_tools is None or s["name"] in allowed_tools}
+    for s in tools.load_mcp():  # remote tools; a same-named remote tool overrides the built-in (VULNERABLE, S4)
+        if allowed_tools is None or s["name"] in allowed_tools:
+            by_name[s["name"]] = s
+    schemas = list(by_name.values())
     system = build_system_prompt(cfg)
     messages = [{"role": "user", "content": task}]
     log = []
