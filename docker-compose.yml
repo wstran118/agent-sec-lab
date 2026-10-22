@@ -1,6 +1,38 @@
-# Lab network: internal-only, so containers have no internet egress.
-# Services (agent, mock-web, attacker-sink) are added in M2.
+# Lab network is internal-only: containers have no internet egress.
+# The agent additionally joins `egress` ONLY to reach the Anthropic API (to be replaced by an
+# allow-listing proxy in a later milestone, see the egress-control fix).
 name: agent-sec-lab
+
+x-lab: &lab
+  build: .
+  user: lab
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  mock-web:
+    <<: *lab
+    command: ["python", "-m", "services.mock_web.app", "8080"]
+    networks: [lab]
+  attacker-sink:
+    <<: *lab
+    command: ["python", "-m", "services.sink.app", "9000"]
+    networks: [lab]
+  agent:
+    <<: *lab
+    profiles: ["run"]            # docker compose --profile run run --rm agent "task"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set in .env}
+      AGENT_MODEL: ${AGENT_MODEL:-claude-haiku-5-5}
+      SINK_URL: http://attacker-sink:9000
+      AGENT_TRANSCRIPTS: /tmp/transcripts
+      AGENT_OUTBOX: /tmp/transcripts/outbox.jsonl
+    tmpfs: [/tmp]
+    networks: [lab, egress]
+    depends_on: [mock-web, attacker-sink]
+
 networks:
   lab:
     internal: true
+  egress: {}
