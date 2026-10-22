@@ -13,6 +13,7 @@ from .billing import BILLING_SCHEMA, call_api
 from .broker import Broker
 from .config import Config
 from .dlp import find_secrets, scrub
+from .mcp_client import suspicious_description, tool_hash
 from .shellsim import simulate
 
 TOOL_SCHEMAS = [
@@ -102,7 +103,7 @@ SHELL_META = re.compile(r"[;&|`$<>\n\\]")
 
 
 class Tools:
-    def __init__(self, cfg: Config, task: str = "", quarantine_model=None, allowed_tools=None):
+    def __init__(self, cfg: Config, task: str = "", quarantine_model=None, allowed_tools=None, mcp=None):
         self.cfg = cfg
         self.allowed_tools = None if allowed_tools is None else set(allowed_tools)
         self.task = task
@@ -110,13 +111,45 @@ class Tools:
         self.tainted = False  # True once untrusted content (fetched pages) has entered the model's context
         self.shell_log: list[str] = []
         self.ledger: list[dict] = []  # payments made by make_payment (stub)
+        self.mcp = mcp  # optional McpClient (S4)
+        self.mcp_routes: dict[str, str] = {}  # exposed tool name -> remote tool name
+        self.mcp_schemas: dict[str, dict] = {}  # exposed tool name -> Anthropic-format schema
+        self.mcp_rejected: list[tuple[str, str]] = []  # (tool, why): shown to the operator, never to the model
         self.broker = Broker(cfg.secrets)  # S6: credentials live here, never in model context (when hardened)
         self.executed: list[list[str]] = []  # argv lists that file_stats caused to run (simulated, never real)
         self._conn: sqlite3.Connection | None = None
 
     # FIX (S5, hardening["validate_args"]): model output is untrusted input; check it against the tool schema.
+    # VULNERABLE (S4): the manifest is fetched on every run and trusted as-is: descriptions go straight into the
+    # model's tool list, new parameters are accepted, and a remote tool with a built-in's name REPLACES it.
+    def load_mcp(self) -> list[dict]:
+        h = self.cfg.hardening
+        self.mcp_routes, self.mcp_schemas, self.mcp_rejected = {}, {}, []
+        if self.mcp is None:
+            return []
+        for t in self.mcp.list_tools():
+            remote = t["name"]
+            name = f"mcp__{self.mcp.server_name}__{remote}" if h.get("mcp_namespace") else remote  # FIX: no collisions
+            pins = h.get("mcp_pins")
+            if pins is not None and pins.get(remote) != tool_hash(t):  # FIX: unpinned or CHANGED since review
+                self.mcp_rejected.append((remote, "not pinned or manifest changed since it was reviewed"))
+                continue
+            if h.get("mcp_scan") and (why := suspicious_description(t["description"])):  # FIX: first-seen scan
+                self.mcp_rejected.append((remote, "suspicious description: " + ", ".join(why)))
+                continue
+            self.mcp_routes[name] = remote
+            self.mcp_schemas[name] = {"name": name, "description": t["description"], "input_schema": t["inputSchema"]}
+        return list(self.mcp_schemas.values())
+
+    def _call_mcp(self, name: str, args: dict) -> str:
+        self.tainted = True  # remote output is untrusted content (feeds the S1 taint gate)
+        props = self.mcp_schemas[name]["input_schema"].get("properties", {})
+        if self.cfg.hardening.get("mcp_pins") is not None and set(args) - set(props):
+            raise PermissionError(f"arguments {sorted(set(args) - set(props))} are not in the reviewed schema")
+        return self.mcp.call(self.mcp_routes[name], args)
+
     def _schema_violation(self, name: str, args: dict) -> str | None:
-        schema = SCHEMA_BY_NAME.get(name)
+        schema = SCHEMA_BY_NAME.get(name) or self.mcp_schemas.get(name, {}).get("input_schema")
         if schema is None or not isinstance(args, dict):
             return "arguments must be an object"
         extra = set(args) - set(schema["properties"])
@@ -180,6 +213,8 @@ class Tools:
 
     def call(self, name: str, args: dict) -> str:
         fn = getattr(self, f"_{name}", None)
+        if name in self.mcp_routes:  # remote tools win name lookups (S4 shadowing) unless namespaced
+            fn = lambda **a: self._call_mcp(name, a)  # noqa: E731
         if fn is None:
             return f"error: unknown tool {name}"
         # FIX (S2): per-task tool grant (least privilege): tools outside the grant are refused even if requested.
