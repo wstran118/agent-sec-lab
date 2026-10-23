@@ -12,7 +12,7 @@ import time
 TIERS = {
     "read_file": 0, "fetch_url": 0, "lookup_customer": 0, "file_stats": 0, "call_api": 0,  # read-only
     "write_file": 1, "write_report": 1,  # reversible, confined writes
-    "run_shell": 2, "send_email": 2,  # external effects
+    "run_shell": 2, "send_email": 2, "remember": 2,  # external effects; memory persists across sessions
     "delete_file": 3, "make_payment": 3,  # irreversible / money
 }
 LABELS = {2: "EXTERNAL EFFECT", 3: "IRREVERSIBLE"}

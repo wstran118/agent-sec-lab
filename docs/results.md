@@ -1,6 +1,6 @@
 # Results
 
-Run `uv run --group dev pytest` (no API key, no network beyond localhost). Last full run: **157 passed, 2 expected xfails**.
+Run `uv run --group dev pytest` (no API key, no network beyond localhost). Last full run: **177 passed, 2 expected xfails**.
 
 | Scenario | Tests | Exploit works on vulnerable agent | Fix blocks it | Documented bypass (`xfail`) |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ Run `uv run --group dev pytest` (no API key, no network beyond localhost). Last 
 | S5 Insecure output handling (shell, SQL, HTML) | 50 | yes | yes | |
 | S6 Secrets in context and logs | 19 | yes | yes | |
 | S7 Missing human-in-the-loop | 16 | yes | yes | |
+| S8 Memory poisoning (cross-session) | 20 | yes | yes | |
 
 CI (GitHub Actions) runs the same tests plus gitleaks, pip-audit, a bandit high-severity gate and hadolint.
 
@@ -21,7 +22,7 @@ CI (GitHub Actions) runs the same tests plus gitleaks, pip-audit, a bandit high-
 
 ## What was not measured
 - **Real-model attack success rates.** `attacks/s1_indirect_injection/exploit.py` and `attacks/s3_exfiltration/exploit.py` measure a real model over N runs, with and without the fix. They have not been run for this write-up, so no rate is claimed. Run them with a spend-capped key to fill in this table.
-- Docker images (the daemon was not available during development), live network egress enforcement, and the stretch scenario S8 (memory poisoning).
+- Docker images (the daemon was not available during development), live network egress enforcement.
 - Anything about resource exhaustion (LLM10), multi-agent setups (ASI07, ASI08, ASI10) or misinformation (LLM09).
 
 ## Known limits of the fixes
@@ -33,3 +34,4 @@ CI (GitHub Actions) runs the same tests plus gitleaks, pip-audit, a bandit high-
 | S4 pinning | does not help if a malicious tool is approved on day one |
 | S5 HTML escaping | reports become plain text |
 | S7 approval gate | approval fatigue; the preview shows what, not why |
+| S8 memory | taint comes from known sources only (a user-uploaded poisoned file is not tracked); the schema is deliberately tiny; the signing key is in the process environment |

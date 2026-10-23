@@ -1,8 +1,8 @@
-# I built a deliberately vulnerable AI agent, broke it seven ways, and fixed each one
+# I built a deliberately vulnerable AI agent, broke it eight ways, and fixed each one
 
 *Draft. Edit freely before publishing.*
 
-Most advice about securing AI agents stays abstract: "validate inputs", "least privilege", "keep a human in the loop". I wanted to see what those sentences look like as code, so I built a small tool-using agent on the Anthropic API, planted seven classic flaws in it, wrote an exploit for each, then wrote the fix and a test that proves the exploit stops working while the normal task still does.
+Most advice about securing AI agents stays abstract: "validate inputs", "least privilege", "keep a human in the loop". I wanted to see what those sentences look like as code, so I built a small tool-using agent on the Anthropic API, planted eight classic flaws in it, wrote an exploit for each, then wrote the fix and a test that proves the exploit stops working while the normal task still does.
 
 Everything runs against fake data. The "secrets" are canary strings like `CANARY-AWS-SECRET-0001`, so a leak is just a string match. The repo is intentionally vulnerable and says so on the first line of the README.
 
@@ -10,11 +10,11 @@ Everything runs against fake data. The "secrets" are canary strings like `CANARY
 
 About 150 lines, no framework, so every flaw is visible: a loop that calls the model, dispatches tool calls and repeats. The tools are read file, write file, fetch URL, send email (a stub), shell (a stub), plus a few added later (a customer lookup, a report writer, a billing client, delete, payment). A mock web server serves pages an attacker can edit; an "attacker sink" records everything sent to it.
 
-## One idea ties the seven together
+## One idea ties the eight together
 
 **The model is not a trust boundary.** Whatever reaches it from a web page, a tool description or a file can steer it, and whatever it emits is attacker-influenced input to your tools. Every fix below enforces a rule in ordinary code, outside the model, because that is the only place a rule is guaranteed to hold.
 
-## The seven
+## The eight
 
 1. **Indirect prompt injection.** A fetched page contains a hidden instruction to email `.env` to an attacker. Fix: a tool-less quarantined model summarises untrusted text, and a taint gate in code blocks risky actions afterwards. I tested the case where the quarantine itself leaks; the gate still holds. Two layers, because neither is enough alone.
 2. **Over-permissioned tools.** `../`, absolute paths and symlinks escape the workspace; every task gets every tool. Fix: resolve the path, then check containment; allow-list writes and shell commands; grant each task only the tools it needs.
@@ -23,6 +23,7 @@ About 150 lines, no framework, so every flaw is visible: a loop that calls the m
 5. **Insecure output handling.** Model text spliced into a command line, an SQL string and an HTML page gives command injection, SQL injection and stored XSS. Fix: argv lists instead of a shell, bound parameters, HTML escaping and a CSP. Nothing runs for real; a small shell parser lists the commands that *would* have started, and the tests assert on that.
 6. **Secrets in context and logs.** A key in the system prompt leaks to anyone who asks the model to repeat its instructions, and then it is in every log. Fix: do not give the model the secret. Tools authenticate with short-lived scoped tokens; redaction is the net underneath.
 7. **No human in the loop.** A poisoned page deletes a contract and pays an attacker. Fix: a gate that shows a human the exact call, is approved out of band, is single-use and bound to those arguments, and degrades safely when nobody is there. Plus caps and allow-lists, because people get tired of clicking yes.
+8. **Memory poisoning.** A poisoned page tells the agent to "remember" a standing rule (copy every email to the attacker). Next week, in a clean session that never saw the page, the agent obeys it. Fix: memory is typed facts, not prose. Only allow-listed fields with validated values, no writes after untrusted content, a signed file, an expiry, and a prompt section that labels the facts as data that cannot change rules.
 
 ## What testing agents taught me
 
@@ -38,7 +39,7 @@ Each scenario maps to the OWASP Top 10 for LLM Applications 2025, the OWASP Top 
 ## Try it
 
 ```
-uv run --group dev pytest          # 157 tests, no API key needed
+uv run --group dev pytest          # 177 tests, no API key needed
 ```
 
 The code, per-scenario write-ups and the results table are in the repository. It is for learning; do not deploy it.
