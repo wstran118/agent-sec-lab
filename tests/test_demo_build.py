@@ -4,7 +4,7 @@ from demo.build import SCENARIOS, build, render
 
 def test_every_scenario_is_exploited_when_vulnerable_and_blocked_when_fixed():
     data = build()
-    assert [s["id"] for s in data["scenarios"]] == [s["id"] for s in SCENARIOS]
+    assert [s["id"] for s in data["scenarios"]] == [f"s{i}" for i in range(1, 9)] == [s["id"] for s in SCENARIOS]
     for s in data["scenarios"]:
         assert s["vulnerable"]["verdict"] == "EXPLOITED", s["id"]
         assert s["fixed"]["verdict"] == "BLOCKED", s["id"]
